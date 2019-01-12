@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import cmath
 import math
+import sys
 
 import numpy as np
 import svgpathtools
@@ -79,8 +80,7 @@ LINES = dict()  # (point) -> set(points)
 
 
 def add_line(a, b):
-
-    a = a.conjugate() # flip y
+    a = a.conjugate()  # flip y
     b = b.conjugate()
 
     if not a in LINES:
@@ -96,10 +96,10 @@ def add_path(path):
     for el in path:
         if isinstance(el, svgpathtools.Line):
             add_line(el.start, el.end)
-        elif isinstance(el, svgpathtools.QuadraticBezier) :
+        elif isinstance(el, svgpathtools.QuadraticBezier):
             t = np.linspace(0.0, 1.0, 10)
-            t1 = np.square(1-t)
-            t2 = 2*(1-t)*t
+            t1 = np.square(1 - t)
+            t2 = 2 * (1 - t) * t
             t3 = np.square(t)
             p = el.start * t1 + el.control * t2 + el.end * t3
 
@@ -136,10 +136,8 @@ def get_min(arr, metric):
 
 
 def pt(c):
-    x = np.rint(c.real)
-    y = np.rint(c.imag)
-    """ format a complex point as X,Y """
-    return f'{x:.0f},{y:.0f}'
+    """ format a complex point as xxx.x,yyy.y """
+    return f'{c.real:.1f},{c.imag:.1f}'
 
 
 def ctr_span(arr):
@@ -163,7 +161,7 @@ def calc_scale(points, oxmin, oymin, oxmax, oymax):
 
 
 def emit_lines(of, scale=1, offs=0.0):
-    dir = 1.0
+    direction = 1.0
     p = 0.0
 
     # new segment
@@ -172,15 +170,12 @@ def emit_lines(of, scale=1, offs=0.0):
         p, _ = get_min(LINES, lambda v: abs(v - p))
         print(f'PU{pt(p*scale+offs)};PD', end='', file=of)
 
-#        print(f'New segment, start at {pt(p)}.')
-#        print(f'  (neighbors are {LINES[p]})')
+        #        print(f'New segment, start at {pt(p)}.')
+        #        print(f'  (neighbors are {LINES[p]})')
 
         while p in LINES:
-            q, _ = get_min(LINES[p], lambda v: cmath.phase((v - p) / dir))
-            dir = (q - p) / np.abs(q - p)
-
-            x = q.real
-            y = q.imag
+            q, _ = get_min(LINES[p], lambda v: cmath.phase((v - p) / direction))
+            direction = (q - p) / np.abs(q - p)
 
             # remove line segments
             LINES[p].remove(q)
@@ -192,7 +187,7 @@ def emit_lines(of, scale=1, offs=0.0):
             else:
                 print(f'{pt(q*scale+offs)};', file=of)
 
-#            print(f' draw to {pt(q)}.')
+            #            print(f' draw to {pt(q)}.')
 
             if not LINES[p]:
                 del LINES[p]
@@ -217,16 +212,54 @@ def emit_circles(of, scale=1.0, offs=0.0):
         print(file=of)
 
 
+###
+# paper sizes from pg
+# P1/P2 scaling points pg 1-14 (pdf 28)
+# plotter range pg 2-2 (pdf
+###
+
+inch = 25.4  # in mm
+
+# height
+PAPER = {
+    # width, height, P1(x), P1(y), P2(x), P2(y), max(x), max(y)
+    'a': (9.5 * inch, 11 * inch, 250, 596, 10250, 7796, 10365, 7962),  # ANSI A (9.5 x 11 in)
+    'a4': (210.0, 297.0, 603, 521, 10603, 7721, 11040, 7721),  # A4 Paper
+    'b': (11 * inch, 17 * inch, 522, 259, 15722, 10259, 16640, 10365),  # ANSI B (11 x 17 in)
+    'a3': (297.0, 420.0, 170, 602, 16370, 10602, 16158, 11040),  # A3 Paper
+}
+
+
 def main():
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument('--paper',
+                        help='Papersize [def: a4], and unknown paper will give a list.',
+                        type=str, default='a4')
+    parser.add_argument('--frame', action='store_true', default=False,
+                        help='Draw frame.')
     parser.add_argument('svgfile', metavar='SVGFILE',
                         help='SVG file to parse')
     parser.add_argument('hpglfile', metavar='HPGFILE', nargs='?',
                         help='HPGL file to output.')
 
     args = parser.parse_args()
+
+    if args.paper not in PAPER:
+        print('List of known paper sizes:')
+        print()
+        print('Name     Height')
+        print(' |  Width  |   P1            P2            X-Range  Y-Range')
+        print('--:-----:-----:-------------:-------------:--------:--------')
+        for p in PAPER:
+            width, height, p1x, p1y, p2x, p2y, maxx, maxy = PAPER[p]
+            print(f'{p:<2} {width:5.1f} {height:5.1f} ({p1x:5},{p1y:5})', end='')
+            print(f' ({p2x:5},{p2y:5}) 0..{maxx:5} 0..{maxy:5}')
+        print('--:-----:-----:-------------:-------------:--------:--------')
+        sys.exit(1)
+
+    width, height, p1x, p1y, p2x, p2y, maxx, maxy = PAPER[args.paper]
 
     if args.hpglfile:
         of = open(args.hpglfile, 'wt')
@@ -235,12 +268,12 @@ def main():
 
     paths, attributes = svgpathtools.svg2paths(args.svgfile)
     for p, a in zip(paths, attributes):
-#        circle = check_circle(p)
-#        if circle:
-#            r, ctr = circle
-#            if not ctr in CIRCLES:
-#                CIRCLES[ctr] = set()
-#            CIRCLES[ctr].add(r)
+        #        circle = check_circle(p)
+        #        if circle:
+        #            r, ctr = circle
+        #            if not ctr in CIRCLES:
+        #                CIRCLES[ctr] = set()
+        #            CIRCLES[ctr].add(r)
         add_path(p)
 
     all_coords = list(LINES.keys())
@@ -248,11 +281,14 @@ def main():
         for r in CIRCLES[p]:
             all_coords.append(p - (r + 0.1) * (1 + 1j))
             all_coords.append(p + (r + 0.1) * (1 + 1j))
-    # metric A4 is X=0..11040 Y=7721
-    s, offs = calc_scale(all_coords, 0, 0, 11040, 7721)
 
+    s, offs = calc_scale(all_coords, 0, 0, maxx, maxy)
 
     print('IN;SP1;', file=of)
+
+    if args.frame:
+        print(f'PU0,0;PD;PA{maxx},0,{maxx},{maxy},0,{maxy},0,0;PU;', file=of)
+
     emit_lines(of, s, offs)
     #    emit_circles(of, s, offs)
 
