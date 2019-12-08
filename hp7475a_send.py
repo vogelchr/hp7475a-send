@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import sys
 import time
-
+import os
 import serial
 
 # answer to <ESC>.O Output Extended Status Information [Manual: 10-42]
@@ -79,6 +79,7 @@ def chk_error(tty):
     if ret:
         raise HPGLError(ret)
 
+
 def plotter_cmd(tty, cmd, get_answer=False):
     tty.write(cmd)
     try:
@@ -105,6 +106,14 @@ def main():
 
     args = parser.parse_args()
 
+    input_bytes = None
+    try:
+        ss = os.stat(args.hpglfile)
+        if ss.st_size != 0:
+            input_bytes = ss.st_size
+    except Exception as e:
+        print('Error stat\'ing file', args.hpglfile, str(e))
+
     hpgl = open(args.hpglfile, 'rb')
 
     tty = serial.Serial(args.port, args.baud, timeout=2.0)
@@ -123,7 +132,8 @@ def main():
         plotter_cmd(tty, b'\033.K')  # abort graphics
         plotter_cmd(tty, b'IN;')  # HPGL initialize
 #        plotter_cmd(tty, b'\033.0')  # raise error
-        bufsz = plotter_cmd(tty, b'\033.L', True)  # Output Buffer Size [Manual 10-36]
+        # Output Buffer Size [Manual 10-36]
+        bufsz = plotter_cmd(tty, b'\033.L', True)
     except HPGLError as e:
         print('*** Error initializing the plotter!')
         print(e)
@@ -141,7 +151,7 @@ def main():
             continue
 
         bufsz = plotter_cmd(tty, b'\033.B', True)
-        if bufsz < 256 :
+        if bufsz < 256:
             print(f'Only {bufsz} bytes free. :-(', end='\r')
             sys.stdout.flush()
             time.sleep(0.25)
@@ -150,13 +160,20 @@ def main():
         data = hpgl.read(bufsz - 128)
         bufsz_read = len(data)
 
-        if bufsz_read == 0 :
+        if bufsz_read == 0:
             print('*** EOF reached, exiting.')
             break
 
-        print(f'{total_bytes_written} byte written. Adding {bufsz_read} ({bufsz} free).')
+        if input_bytes != None:
+            percent = 100.0 * total_bytes_written/input_bytes
+            print(
+                f'{percent:.2f}%, {total_bytes_written} byte written. Adding {bufsz_read} ({bufsz} free).')
+        else:
+            print(
+                f'{total_bytes_written} byte written. Adding {bufsz_read} ({bufsz} free).')
         tty.write(data)
         total_bytes_written += bufsz_read
+
 
 if __name__ == '__main__':
     main()
