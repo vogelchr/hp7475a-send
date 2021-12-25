@@ -151,7 +151,7 @@ def main():
             continue
 
         bufsz = plotter_cmd(tty, b'\033.B', True)
-        if bufsz < 256:
+        if bufsz < 192:
             print(f'Only {bufsz} bytes free. :-(', end='\r')
             sys.stdout.flush()
             time.sleep(0.25)
